@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ruleta de proyectos</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#16213e; --panel:#1f2d52; --line:#34467a; --ink:#f3f6ff; --mute:#a9b6d8;
+  --accent:#ff5d8f; --accent-ink:#2a0b17;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){--bg:#eef2fb;--panel:#fff;--line:#c9d3ec;--ink:#16213e;--mute:#53628a;--accent:#d92f6b;--accent-ink:#fff}
+}
+:root[data-theme="dark"]{--bg:#16213e;--panel:#1f2d52;--line:#34467a;--ink:#f3f6ff;--mute:#a9b6d8;--accent:#ff5d8f;--accent-ink:#2a0b17}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.5 "Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:24px 16px 40px;display:grid;gap:28px;grid-template-columns:minmax(0,1fr)}
+@media(min-width:860px){main{grid-template-columns:minmax(260px,340px) minmax(0,1fr);align-items:start}}
+h1{font-size:clamp(1.8rem,5vw,2.6rem);line-height:1.05;margin:0 0 6px;font-weight:800;letter-spacing:-.02em}
+.sub{margin:0 0 18px;color:var(--mute)}
+label{display:block;font-weight:600;margin-bottom:6px}
+textarea,select{width:100%;background:var(--panel);color:var(--ink);border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:.95rem}
+textarea{min-height:240px;resize:vertical;white-space:pre;overflow:auto}
+select{margin-bottom:12px}
+textarea:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.cols{margin-top:14px}
+.count{margin:8px 0 0;color:var(--mute);font-size:.9rem;min-height:1.4em}
+.stage{display:flex;flex-direction:column;align-items:center;gap:18px}
+canvas{width:100%;max-width:560px;aspect-ratio:1;display:block}
+.btn{border:0;border-radius:999px;padding:14px 34px;font:800 1.1rem "Bricolage Grotesque",system-ui,sans-serif;background:var(--accent);color:var(--accent-ink);cursor:pointer}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line);font-size:.95rem;padding:9px 20px;font-weight:600}
+.winner{width:100%;max-width:560px;text-align:center;background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:16px;min-height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.winner .w{font-size:clamp(1.5rem,4.5vw,2.2rem);font-weight:800;overflow-wrap:anywhere;line-height:1.1}
+.winner .p{font-size:1.15rem;color:var(--mute);overflow-wrap:anywhere}
+.winner .btn{margin-top:8px}
+.winner .hint{color:var(--mute)}
+.modes{display:flex;border:1.5px solid var(--line);border-radius:999px;padding:3px;background:var(--panel)}
+.mode{border:0;background:transparent;color:var(--mute);font:600 .95rem "Bricolage Grotesque",system-ui,sans-serif;padding:8px 18px;border-radius:999px;cursor:pointer}
+.mode[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <h1>Ruleta de proyectos</h1>
+    <p class="sub">Copia las filas de tu hoja, con la fila de encabezados, y pégalas aquí. Cada proyecto cuenta una sola vez.</p>
+    <label for="lista">Filas de la hoja</label>
+    <textarea id="lista" spellcheck="false" placeholder="Pega aquí las filas copiadas de Google Sheets"></textarea>
+    <div class="cols" id="cols" hidden>
+      <label for="selNick">Columna del nickname</label>
+      <select id="selNick"></select>
+      <label for="selProj">Columna de la marca o proyecto</label>
+      <select id="selProj"></select>
+    </div>
+    <p class="count" id="count" aria-live="polite"></p>
+  </section>
+  <section class="stage">
+    <div class="modes" role="group" aria-label="Modalidad"><button type="button" class="mode" id="m1" aria-pressed="true">Un solo giro</button><button type="button" class="mode" id="m2" aria-pressed="false">Eliminación</button></div>
+    <canvas id="cv" role="img" aria-label="Ruleta con los proyectos"></canvas>
+    <button class="btn" id="spin" type="button">Girar</button>
+    <div class="winner" id="winner" aria-live="polite"><span class="hint">El ganador aparecerá aquí.</span></div>
+  </section>
+</main>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var ta=$("lista"),cv=$("cv"),ctx=cv.getContext("2d"),spinBtn=$("spin"),countEl=$("count"),winEl=$("winner");
+var colsEl=$("cols"),selN=$("selNick"),selP=$("selProj");
+var COLORS=["#ff8fab","#ffc857","#7bdff2","#b8f2a5","#c8b6ff","#ffb38a","#9bf6d0","#f4e285"];
+var TAU=Math.PI*2,entries=[],all=[],elim={},mode="single",multi=false,projIdx=0,rot=0,spinning=false,lastSig=null,recs=[],KEY="ruleta-proyectos-lista";
+var TIME=/marca temporal|timestamp|fecha|hora/i,NICK=/nick|usuario|user|twitch|streamer|alias/i,PROJ=/marca|proyecto|brand|project|empresa|negocio/i;
+var reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function clean(c){return c.trim().replace(/^"+|"+$/g,"").trim()}
+function parseTSV(t){
+  var out=[],row=[],f="",q=false,start=0,i=0,n=t.length;
+  function endRow(end){
+    row.push(f.trim());f="";
+    if(row.some(function(c){return c}))out.push({cells:row,raw:t.slice(start,end)});
+    row=[];
+  }
+  while(i<n){
+    var ch=t[i];
+    if(q){
+      if(ch==='"'){if(t[i+1]==='"'){f+='"';i+=2;continue}q=false;i++;continue}
+      f+=ch;i++;continue;
+    }
+    if(ch==='"'&&f===""){q=true;i++;continue}
+    if(ch==="\t"){row.push(f.trim());f="";i++;continue}
+    if(ch==="\n"||ch==="\r"){
+      endRow(i);
+      if(ch==="\r"&&t[i+1]==="\n")i++;
+      i++;start=i;continue;
+    }
+    f+=ch;i++;
+  }
+  if(f!==""||row.length)endRow(n);
+  return out;
+}
+function fillSelects(h){
+  [selN,selP].forEach(function(s){
+    s.innerHTML="";
+    h.forEach(function(x,i){var o=document.createElement("option");o.value=i;o.textContent=(x||"").replace(/\s+/g," ").trim()||("Columna "+(i+1));s.appendChild(o)});
+  });
+  var n=-1,p=-1;
+  h.forEach(function(x,i){
+    if(TIME.test(x))return;
+    if(n<0&&NICK.test(x))n=i; else if(p<0&&PROJ.test(x))p=i;
+  });
+  var free=h.map(function(x,i){return i}).filter(function(i){return !TIME.test(h[i])&&i!==n&&i!==p});
+  if(n<0)n=free.shift(); if(p<0)p=free.shift();
+  if(n===undefined)n=0; if(p===undefined)p=Math.min(1,h.length-1);
+  selN.value=n;selP.value=p;
+}
+function parse(){
+  recs=parseTSV(ta.value);var rows=recs.map(function(r){return r.cells});
+  var cols=rows.reduce(function(m,r){return Math.max(m,r.length)},0),data=rows,nIdx=-1;
+  multi=cols>1;
+  colsEl.hidden=!multi;
+  if(multi){
+    var h=rows[0],sig=h.join("|");
+    data=rows.slice(1);
+    if(sig!==lastSig){fillSelects(h);lastSig=sig}
+    nIdx=+selN.value;projIdx=+selP.value;
+  } else {lastSig=null;projIdx=0}
+  var seen={},out=[],raw=0;
+  data.forEach(function(r){
+    var proj=r[projIdx]||"";if(!proj)return;raw++;
+    var k=proj.toLowerCase();if(seen[k])return;seen[k]=1;
+    out.push({proj:proj,nick:nIdx>=0?(r[nIdx]||""):""});
+  });
+  return {list:out,dups:raw-out.length};
+}
+function label(e){return e.nick?e.proj+" ("+e.nick+")":e.proj}
+function color(i,n){
+  if(i===n-1&&n>1&&i%COLORS.length===0)return COLORS[3];
+  return COLORS[i%COLORS.length];
+}
+function draw(){
+  var dpr=window.devicePixelRatio||1,s=cv.clientWidth||400;
+  if(cv.width!==Math.round(s*dpr)){cv.width=Math.round(s*dpr);cv.height=Math.round(s*dpr)}
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,s,s);
+  var c=s/2,r=c-14,n=entries.length,css=getComputedStyle(document.documentElement);
+  var line=css.getPropertyValue("--line").trim()||"#34467a",ink=css.getPropertyValue("--ink").trim()||"#fff";
+  var bg=css.getPropertyValue("--bg").trim()||"#16213e";
+  if(n<1){
+    ctx.beginPath();ctx.arc(c,c,r,0,TAU);ctx.fillStyle=css.getPropertyValue("--panel").trim()||"#1f2d52";ctx.fill();
+    ctx.lineWidth=3;ctx.strokeStyle=line;ctx.stroke();
+    ctx.fillStyle=ink;ctx.textAlign="center";ctx.font="600 "+Math.max(14,s/26)+"px 'Bricolage Grotesque',system-ui,sans-serif";
+    ctx.fillText("Pega tu lista para empezar",c,c+5);
+  } else {
+    var a=TAU/n;
+    for(var i=0;i<n;i++){
+      ctx.beginPath();ctx.moveTo(c,c);ctx.arc(c,c,r,rot+i*a,rot+(i+1)*a);ctx.closePath();
+      ctx.fillStyle=color(i,n);ctx.fill();ctx.lineWidth=n>60?0.5:2;ctx.strokeStyle=line;ctx.stroke();
+    }
+    if(n<=40){
+      var fs=Math.max(10,Math.min(s/24,(r*a)*0.5));
+      ctx.fillStyle="#1b1b2f";ctx.textAlign="right";ctx.textBaseline="middle";
+      ctx.font="600 "+fs+"px 'Bricolage Grotesque',system-ui,sans-serif";
+      for(var j=0;j<n;j++){
+        var t=label(entries[j]),max=Math.floor(r*0.8/(fs*0.55));if(t.length>max)t=t.slice(0,max-1)+"…";
+        ctx.save();ctx.translate(c,c);ctx.rotate(rot+(j+.5)*a);ctx.fillText(t,r-12,0);ctx.restore();
+      }
+    }
+    ctx.beginPath();ctx.arc(c,c,s*0.05,0,TAU);ctx.fillStyle=bg;ctx.fill();
+    ctx.lineWidth=3;ctx.strokeStyle=line;ctx.stroke();
+  }
+  ctx.beginPath();ctx.moveTo(c-14,2);ctx.lineTo(c+14,2);ctx.lineTo(c,32);ctx.closePath();
+  ctx.fillStyle=css.getPropertyValue("--accent").trim()||"#ff5d8f";ctx.fill();
+  ctx.lineWidth=2;ctx.strokeStyle=bg;ctx.stroke();
+}
+function refresh(){
+  var p=parse();all=p.list;entries=all.filter(function(e){return !elim[e.proj.toLowerCase()]});
+  countEl.textContent=all.length?(all.length+(all.length===1?" proyecto":" proyectos")+(p.dups?" · "+p.dups+(p.dups===1?" repetido ignorado":" repetidos ignorados"):"")+(entries.length<all.length?" · quedan "+entries.length:"")):"";
+  spinBtn.disabled=spinning||entries.length<2;
+  try{localStorage.setItem(KEY,ta.value)}catch(e){}
+  draw();
+}
+function rnd(){var b=new Uint32Array(1);(window.crypto||{getRandomValues:function(x){x[0]=Math.random()*4294967296}}).getRandomValues(b);return b[0]/4294967296}
+function removeProject(proj){
+  var key=proj.toLowerCase();
+  ta.value=recs.filter(function(r,i){
+    if(multi&&i===0)return true;
+    return (r.cells[projIdx]||"").toLowerCase()!==key;
+  }).map(function(r){return r.raw}).join("\n");
+}
+function showWinner(e){
+  winEl.innerHTML="";
+  var w=document.createElement("div");w.className="w";w.textContent=e.nick||e.proj;
+  winEl.appendChild(w);
+  if(e.nick){var p=document.createElement("div");p.className="p";p.textContent=e.proj;winEl.appendChild(p)}
+  var b=document.createElement("button");b.type="button";b.className="btn ghost";b.textContent="Quitar de la lista";
+  b.onclick=function(){
+    removeProject(e.proj);
+    winEl.innerHTML='<span class="hint">Proyecto quitado. Gira de nuevo cuando quieras.</span>';
+    refresh();
+  };
+  winEl.appendChild(b);
+}
+function mkReset(){
+  var b=document.createElement("button");b.type="button";b.className="btn ghost";b.textContent="Reiniciar";
+  b.onclick=function(){elim={};winEl.innerHTML='<span class="hint">Lista restaurada. Elimina de nuevo cuando quieras.</span>';refresh()};
+  return b;
+}
+function card(e,top,bottom){
+  winEl.innerHTML="";
+  function add(cls,txt){var d=document.createElement("div");d.className=cls;d.textContent=txt;winEl.appendChild(d)}
+  if(top)add("p",top);
+  add("w",e.nick||e.proj);
+  if(e.nick)add("p",e.proj);
+  if(bottom)add("hint",bottom);
+  winEl.appendChild(mkReset());
+}
+function finish(e){
+  if(mode==="single"){spinBtn.disabled=entries.length<2;showWinner(e);return}
+  elim[e.proj.toLowerCase()]=1;refresh();
+  if(entries.length<=1)card(entries[0]||e,"","Es el último que queda: ganador");
+  else card(e,"Eliminado","Quedan "+entries.length);
+}
+function setMode(m){
+  if(spinning)return;
+  mode=m;elim={};
+  $("m1").setAttribute("aria-pressed",m==="single");$("m2").setAttribute("aria-pressed",m==="elim");
+  spinBtn.textContent=m==="single"?"Girar":"Eliminar uno";
+  winEl.innerHTML='<span class="hint">'+(m==="single"?"El ganador aparecerá aquí.":"Cada giro elimina a un participante. El último que quede gana.")+'</span>';
+  refresh();
+}
+function spin(){
+  if(spinning||entries.length<2)return;
+  spinning=true;spinBtn.disabled=true;
+  winEl.innerHTML='<span class="hint">Girando…</span>';
+  var n=entries.length,a=TAU/n,idx=Math.floor(rnd()*n),list=entries.slice();
+  var target=-Math.PI/2-(idx+0.15+0.7*rnd())*a;
+  var start=rot,delta=((target-start)%TAU+TAU)%TAU+TAU*(5+Math.floor(rnd()*3));
+  var dur=reduce?900:5500,t0=null;
+  function step(t){
+    if(t0===null)t0=t;
+    var k=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-k,3);
+    rot=start+delta*e;draw();
+    if(k<1){requestAnimationFrame(step)}
+    else{spinning=false;finish(list[idx])}
+  }
+  requestAnimationFrame(step);
+}
+try{var saved=localStorage.getItem(KEY);if(saved)ta.value=saved}catch(e){}
+ta.addEventListener("input",function(){if(!spinning){elim={};refresh()}});
+selN.addEventListener("change",function(){if(!spinning){elim={};refresh()}});
+selP.addEventListener("change",function(){if(!spinning){elim={};refresh()}});
+spinBtn.addEventListener("click",spin);
+$("m1").addEventListener("click",function(){setMode("single")});
+$("m2").addEventListener("click",function(){setMode("elim")});
+window.addEventListener("resize",draw);
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(draw);
+refresh();
+})();
+</script>
+</body>
+</html>
