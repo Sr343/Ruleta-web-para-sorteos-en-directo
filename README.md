@@ -1,2 +1,1 @@
-# Ruleta-web-para-sorteos-en-directo
-Ruleta web para sorteos en directo: pega las respuestas de un Google Form, elige las columnas de nickname y proyecto, y sortea con un solo giro o por eliminación hasta que quede un ganador.
+Ruleta de proyectos para streamers. Copia las filas de tu hoja de respuestas de Google Sheets, pégalas en la página y la ruleta detecta las columnas de nickname y proyecto. Cada proyecto cuenta una sola vez. Tiene dos modalidades: un solo giro, donde el primero que cae gana, y eliminación, donde cada giro saca a un participante hasta que queda uno. Es una sola página HTML, sin dependencias ni servidor.
